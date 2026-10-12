@@ -1,6 +1,6 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
-import { statusText } from '../hooks/register'
+import { checkKey, computeHints, isCorrection, parseBreaks } from '../hooks/register'
 
 const BAND = {
   component: 'AbovePrompt',
@@ -14,51 +14,78 @@ const BAND = {
   },
 } as const
 
-test('the band shows the three buttons when idle', async $ => {
+const BASE = {
+  percent: 10,
+  localMinute: 10 * 60,
+  breaks: parseBreaks('17:30 end of work, 22:30 bedtime'),
+  leadMinutes: 30,
+  sessionMinutes: 20,
+  turns: 5,
+  reflect: null,
+  compactAt: 40,
+  handoffAt: 70,
+  longSessionMinutes: 180,
+}
+
+test('no hints in a calm session', () => {
+  expect(computeHints(BASE)).toEqual([])
+})
+
+test('compact from 40%, handoff from 70%', () => {
+  expect(computeHints({ ...BASE, percent: 45 }).map(h => h.kind)).toEqual(['compact'])
+  expect(computeHints({ ...BASE, percent: 72 }).map(h => h.kind)).toEqual(['compact', 'handoff'])
+})
+
+test('handoff shortly before a break time', () => {
+  const [hint] = computeHints({ ...BASE, localMinute: 17 * 60 + 10 })
+  expect(hint).toEqual({ kind: 'handoff', reason: 'end of work at 17:30 (in 20 min)' })
+  expect(computeHints({ ...BASE, localMinute: 16 * 60 })).toEqual([])
+  expect(computeHints({ ...BASE, localMinute: 22 * 60 + 15 })[0]?.reason).toContain('bedtime')
+})
+
+test('handoff after a long session', () => {
+  expect(computeHints({ ...BASE, sessionMinutes: 200, turns: 12 })[0]?.reason).toBe('This session has run 3h')
+})
+
+test('reflect comes first when there is a reason', () => {
+  expect(computeHints({ ...BASE, percent: 50, reflect: 'You just corrected me' })[0]?.kind).toBe('reflect')
+})
+
+test('break times parse', () => {
+  expect(parseBreaks('15:10 pick up kids, bad, 7:05')).toEqual([
+    { minute: 15 * 60 + 10, label: 'pick up kids' },
+    { minute: 7 * 60 + 5, label: 'break' },
+  ])
+})
+
+test('corrections and checks are recognized', () => {
+  expect(isCorrection('no, use pnpm')).toBe(true)
+  expect(isCorrection('add retries to the consumer')).toBe(false)
+  expect(checkKey('pytest tests/test_a.py -k slow')).toBe('pytest tests/test_a.py')
+  expect(checkKey('go test ./... && echo ok')).toBe('go test')
+  expect(checkKey('ls -la')).toBeUndefined()
+})
+
+test('the band stays empty without hints, and shows Reflect after a correction', async ($, on) => {
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Box } = $.ui.resolve(e)
+    return <Box key="engine" />
+  })
+  mock.clock(on, { now: Date.UTC(2026, 9, 12, 17) })
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const quiet = await $.ui.mount({ plugin: 'session-hud', surface, ...BAND })
+    expect(await quiet.find({ key: 'reflect' })).toBeUndefined()
+    await quiet.unmount()
+  }
+
+  await $.prompt.submit({ text: "no, don't use npm here", origin: { kind: 'composer' }, wait: false })
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'session-hud', surface, ...BAND })
-    expect(await ui.find({ key: 'compact' })).toBeDefined()
-    expect(await ui.find({ key: 'handoff' })).toBeDefined()
     expect(await ui.find({ key: 'reflect' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /corrected/ })).toBeDefined()
+    expect(await ui.find({ key: 'compact' })).toBeUndefined()
     await ui.unmount()
   }
-})
-
-test('the buttons hide while Claude is working', async ($, on) => {
-  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
-    const { Box } = $.ui.resolve(e)
-    return <Box key="engine" />
-  })
-  const ui = await $.ui.mount({
-    plugin: 'session-hud',
-    surface: 'terminal',
-    ...BAND,
-    props: { ...BAND.props, isWorking: true },
-  })
-  expect(await ui.find({ key: 'compact' })).toBeUndefined()
-  await ui.unmount()
-})
-
-test('/hud toggles the band', async ($, on) => {
-  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
-    const { Box } = $.ui.resolve(e)
-    return <Box key="engine" />
-  })
-  const { text } = await $.command.run({
-    command: 'hud',
-    args: '',
-    origin: { kind: 'composer' },
-    presentation: { isFullscreen: false, columns: 100 },
-  })
-  expect(text).toBe('HUD hidden.')
-  const ui = await $.ui.mount({ plugin: 'session-hud', surface: 'terminal', ...BAND })
-  expect(await ui.find({ key: 'compact' })).toBeUndefined()
-  await ui.unmount()
-})
-
-test('the status line carries every figure and marks a full context', () => {
-  const fill = { percent: 55, tokens: 110_000, window: 200_000, fiveHour: 27, sevenDay: 18, usd: 0.12 }
-  expect(statusText(fill, 192_000, 50)).toBe('🔴 ctx 55% (110k/200k) · cache 3:12 · 5h 27% · 7d 18% · $0.12')
-  expect(statusText({ ...fill, percent: 40 }, 0, 50)).toContain('🟡 ctx 40%')
-  expect(statusText({ ...fill, percent: 4 }, null, 50)?.startsWith('ctx 4%')).toBe(true)
 })

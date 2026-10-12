@@ -1,17 +1,27 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { HudUsage } from '../types'
+import type { Hint, HintKind } from '../types'
 
-const now = atom({ plugin: 'session-hud', key: 'now' } as const, 0)
-const lastReplyAt = atom({ plugin: 'session-hud', key: 'lastReplyAt' } as const, null)
-const usage = atom({ plugin: 'session-hud', key: 'usage' } as const, null)
+const hints = atom({ plugin: 'session-hud', key: 'hints' } as const, [])
+const reflectReason = atom({ plugin: 'session-hud', key: 'reflectReason' } as const, null)
+const snoozedUntil = atom({ plugin: 'session-hud', key: 'snoozedUntil' } as const, 0)
 const busy = atom({ plugin: 'session-hud', key: 'busy' } as const, null)
 const isHidden = atom({ plugin: 'session-hud', key: 'isHidden' } as const, false)
 
 const PENDING_HANDOFF = 'pendingHandoff'
 const HANDOFF_DIR = '.claude/handoffs'
-const TICK_MS = 5000
+const TICK_MS = 30_000
+const SNOOZE_MS = 30 * 60_000
+const DAY_MINUTES = 24 * 60
+
+const ICONS: Record<HintKind, string> = { compact: '◐', handoff: '⇢', reflect: '✎' }
+const LABELS: Record<HintKind, string> = { compact: 'Compact', handoff: 'Handoff', reflect: 'Reflect' }
+
+const STARTS_LIKE_CORRECTION = /^\s*(no\b|nope\b|wrong\b|stop\b|don'?t\b|do not\b|not that\b|that'?s not\b|that is not\b|undo\b|revert\b)/i
+const SOUNDS_LIKE_CORRECTION =
+  /\b(i (said|told you|asked( you)?)|you (forgot|missed|broke|ignored|should(n'?t| not)?)|not what i (asked|wanted|meant)|never (do|use)|always (do|use)|stop (doing|using)|why did you|that'?s wrong|is wrong)/i
+const CHECK_COMMAND = /\b(test|tests|pytest|jest|vitest|build|lint|tsc|cargo|go|make|mvn|gradle|ruff|mypy|eslint|bazel)\b/
 
 const HANDOFF_PROMPT = `Write a handoff note so a NEW session with no memory of this one can continue the work.
 Use this exact markdown layout, short bullets, no filler:
@@ -32,7 +42,8 @@ const REFLECT_PROMPT = `Reflect on this session so you get better next time. Do 
 1. Gather what we learned:
    - Read ~/.claude/corrections.md if it exists: corrections I gave you, logged automatically.
    - Add what this session taught: facts about this project (build/test commands, layout,
-     conventions), mistakes you made, workflows we repeated, and steps a hook could automate.
+     conventions), mistakes you made, problems we fixed and their root cause, workflows we
+     repeated, and steps a hook could automate.
 2. For each item, propose ONE concrete change and where it goes:
    - This project only: CLAUDE.md in the repo, or .claude/skills/ and .claude/settings.json.
    - Every project: ~/claude-kit/rules/global.md (my global rules), a skill under
@@ -43,73 +54,139 @@ const REFLECT_PROMPT = `Reflect on this session so you get better next time. Do 
    - Remove the handled entries from ~/.claude/corrections.md.
    - If ~/claude-kit changed, commit there with a one-line message (do not push).`
 
-const usageOf = async ($: EngineInterface): Promise<HudUsage> => {
-  const { context, rateLimits, cost } = await $.session.usage()
-  const limit = (kind: string) => rateLimits.find(one => one.kind === kind)?.percentUsed ?? null
+export type BreakTime = { minute: number; label: string }
 
-  return {
-    percent: context.percent ?? null,
-    tokens: context.tokens ?? null,
-    window: context.window,
-    fiveHour: limit('five_hour'),
-    sevenDay: limit('seven_day'),
-    usd: cost?.usd ?? null,
+export type HintInput = {
+  percent: number | null
+  localMinute: number
+  breaks: readonly BreakTime[]
+  leadMinutes: number
+  sessionMinutes: number
+  turns: number
+  reflect: string | null
+  compactAt: number
+  handoffAt: number
+  longSessionMinutes: number
+}
+
+const two = (n: number) => String(n).padStart(2, '0')
+
+const hhmm = (minute: number) => `${two(Math.floor(minute / 60) % 24)}:${two(minute % 60)}`
+
+// "17:30 end of work, 22:30 bedtime" -> [{ minute: 1050, label: "end of work" }, ...]
+export function parseBreaks(text: unknown): BreakTime[] {
+  if (typeof text !== 'string') return []
+
+  return text.split(',').flatMap(part => {
+    const match = /^\s*(\d{1,2}):(\d{2})\s*(.*)$/.exec(part)
+    if (match === null) return []
+    const minute = Number(match[1]) * 60 + Number(match[2])
+
+    return minute < DAY_MINUTES ? [{ minute, label: (match[3] ?? '').trim() || 'break' }] : []
+  })
+}
+
+// Which buttons are worth showing now, and why. Empty means the band stays out of the way.
+export function computeHints(input: HintInput): Hint[] {
+  const found: Hint[] = []
+  const { percent } = input
+
+  if (input.reflect !== null) found.push({ kind: 'reflect', reason: input.reflect })
+
+  if (percent !== null && percent >= input.compactAt) {
+    found.push({ kind: 'compact', reason: `Context is ${percent}% full` })
   }
-}
 
-
-const kTokens = (n: number) => `${Math.round(n / 1000)}k`
-
-const clockText = (ms: number) => {
-  const total = Math.max(0, Math.ceil(ms / 1000))
-  const minutes = Math.floor(total / 60)
-  const seconds = total % 60
-
-  return minutes >= 10 ? `${minutes}m` : `${minutes}:${String(seconds).padStart(2, '0')}`
-}
-
-const stamp = (ms: number) => {
-  const d = new Date(ms)
-  const two = (n: number) => String(n).padStart(2, '0')
-
-  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}`
-}
-
-type Config = { ttlMs: number; redAt: number; warnedRed: boolean }
-
-// The light, always-on view: the status line carries every figure, marked when one needs attention.
-export function statusText(fill: HudUsage, cacheLeftMs: number | null, redAt: number): string | undefined {
-  const parts: string[] = []
-  if (fill.percent !== null) {
-    const mark = fill.percent >= redAt ? '🔴 ' : fill.percent >= Math.max(0, redAt - 15) ? '🟡 ' : ''
-    const size = fill.tokens === null ? '' : ` (${kTokens(fill.tokens)}/${kTokens(fill.window)})`
-    parts.push(`${mark}ctx ${fill.percent}%${size}`)
+  const soon = input.breaks
+    .map(one => ({ ...one, inMinutes: (one.minute - input.localMinute + DAY_MINUTES) % DAY_MINUTES }))
+    .filter(one => one.inMinutes <= input.leadMinutes)
+    .sort((a, b) => a.inMinutes - b.inMinutes)[0]
+  if (soon !== undefined && input.turns > 0) {
+    const when = soon.inMinutes === 0 ? 'now' : `in ${soon.inMinutes} min`
+    found.push({ kind: 'handoff', reason: `${soon.label} at ${hhmm(soon.minute)} (${when})` })
+  } else if (percent !== null && percent >= input.handoffAt) {
+    found.push({ kind: 'handoff', reason: `Context is ${percent}%, a fresh session will work better` })
+  } else if (input.sessionMinutes >= input.longSessionMinutes && input.turns >= 10) {
+    found.push({ kind: 'handoff', reason: `This session has run ${Math.floor(input.sessionMinutes / 60)}h` })
   }
-  if (cacheLeftMs !== null) parts.push(cacheLeftMs > 0 ? `cache ${clockText(cacheLeftMs)}` : 'cache cold')
-  if (fill.fiveHour !== null) parts.push(`5h ${fill.fiveHour}%`)
-  if (fill.sevenDay !== null) parts.push(`7d ${fill.sevenDay}%`)
-  if (fill.usd !== null && fill.usd > 0) parts.push(`$${fill.usd.toFixed(2)}`)
 
-  return parts.length === 0 ? undefined : parts.join(' · ')
+  return found
 }
 
-const refresh = async ($: EngineInterface, cfg: Config) => {
+export function isCorrection(text: string): boolean {
+  const head = text.slice(0, 400)
+
+  return STARTS_LIKE_CORRECTION.test(head) || SOUNDS_LIKE_CORRECTION.test(head)
+}
+
+// The part of a command that names the check: "pytest tests/x.py -k y" -> "pytest tests/x.py".
+export function checkKey(command: string): string | undefined {
+  const first = command.split(/&&|\|\||;|\|/)[0]?.trim() ?? ''
+  if (!CHECK_COMMAND.test(first)) return undefined
+
+  return first.split(/\s+/).slice(0, 2).join(' ')
+}
+
+// Minutes east of UTC, from the host's own clock (the hooks environment may run in UTC).
+async function localOffsetMinutes($: EngineInterface) {
+  try {
+    const { stdout } = await $.process.run(['date', '+%z'], { timeoutMs: 2000 })
+    const match = /^([+-])(\d{2})(\d{2})/.exec(stdout.trim())
+    if (match !== null) return (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3]))
+  } catch {
+    // fall through to the environment's own idea of the zone
+  }
+
+  return -new Date().getTimezoneOffset()
+}
+
+const stamp = (ms: number, offsetMinutes: number) => {
+  const d = new Date(ms + offsetMinutes * 60_000)
+
+  return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}-${two(d.getUTCHours())}${two(d.getUTCMinutes())}`
+}
+
+type Config = {
+  compactAt: number
+  handoffAt: number
+  breaks: BreakTime[]
+  leadMinutes: number
+  longSessionMinutes: number
+  offsetMinutes: number
+  startedAt: number
+  lastSuggested: string | null
+}
+
+async function refresh($: EngineInterface, cfg: Config) {
   const at = await $.clock.now()
-  const fill = await usageOf($)
-  await update($, now, () => at)
-  await update($, usage, () => fill)
+  const { context } = await $.session.usage()
+  const found = computeHints({
+    percent: context.percent ?? null,
+    localMinute: Math.floor((((at / 60_000 + cfg.offsetMinutes) % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES),
+    breaks: cfg.breaks,
+    leadMinutes: cfg.leadMinutes,
+    sessionMinutes: cfg.startedAt === 0 ? 0 : (at - cfg.startedAt) / 60_000,
+    turns: await $.session.turns(),
+    reflect: await read($, reflectReason),
+    compactAt: cfg.compactAt,
+    handoffAt: cfg.handoffAt,
+    longSessionMinutes: cfg.longSessionMinutes,
+  })
+  await update($, hints, () => found)
 
-  const replied = await read($, lastReplyAt)
-  $.ui.status(statusText(fill, replied === null ? null : cfg.ttlMs - (at - replied), cfg.redAt))
-
-  if (fill.percent !== null && fill.percent >= cfg.redAt && !cfg.warnedRed) {
-    cfg.warnedRed = true
-    $.ui.toast(`Context is at ${fill.percent}%. Consider /compact or /handoff.`)
-  }
-  if (fill.percent !== null && fill.percent < cfg.redAt) cfg.warnedRed = false
+  return found
 }
 
-const compact = async ($: EngineInterface, cfg: Config) => {
+// Puts the top hint's command in the prompt box as a dim Tab suggestion, once per new hint.
+async function suggest($: EngineInterface, cfg: Config, found: readonly Hint[]) {
+  const top = found[0]
+  const key = top === undefined ? null : `${top.kind}:${top.reason}`
+  if (top === undefined || key === cfg.lastSuggested || (await read($, snoozedUntil)) > (await $.clock.now())) return
+  cfg.lastSuggested = key
+  await $.prompt.suggest({ text: `/${top.kind}` })
+}
+
+async function compact($: EngineInterface, cfg: Config) {
   await update($, busy, () => 'Compacting…')
   try {
     const { skip } = await $.session.compact()
@@ -118,17 +195,17 @@ const compact = async ($: EngineInterface, cfg: Config) => {
     $.ui.toast('Cannot compact while Claude is working. Try again when the turn ends.')
   } finally {
     await update($, busy, () => null)
-    await refresh($, cfg)
+    await refresh($, cfg).catch(() => undefined)
   }
 }
 
-const handoff = async ($: EngineInterface): Promise<string> => {
+async function handoff($: EngineInterface, cfg: Config): Promise<string> {
   await update($, busy, () => 'Writing handoff…')
   try {
     const answer = await $.model.fork({ prompt: HANDOFF_PROMPT })
     if (!answer.isAnswered) return `Handoff failed: ${answer.reason}.`
 
-    const path = `${HANDOFF_DIR}/${stamp(await $.clock.now())}.md`
+    const path = `${HANDOFF_DIR}/${stamp(await $.clock.now(), cfg.offsetMinutes)}.md`
     await $.fs.write(path, answer.text.trim() + '\n')
     await $.store.set(PENDING_HANDOFF, { path, at: await $.clock.now() })
     await $.ui.copy({ text: `Read @${path} and continue the work from there.` })
@@ -142,13 +219,21 @@ const handoff = async ($: EngineInterface): Promise<string> => {
   }
 }
 
-const reflect = async ($: EngineInterface) => {
+// Shows the Reflect hint at once, without waiting for the next refresh.
+async function setReflect($: EngineInterface, reason: string) {
+  await update($, reflectReason, () => reason)
+  await update($, hints, list => [{ kind: 'reflect' as const, reason }, ...list.filter(hint => hint.kind !== 'reflect')])
+}
+
+async function reflect($: EngineInterface) {
+  await update($, reflectReason, () => null)
+  await update($, hints, list => list.filter(hint => hint.kind !== 'reflect'))
   await $.prompt.submit({ text: REFLECT_PROMPT })
 
   return 'Reflection started.'
 }
 
-const fillPendingHandoff = async ($: EngineInterface) => {
+async function fillPendingHandoff($: EngineInterface) {
   const pending = (await $.store.get(PENDING_HANDOFF)) as { path: string; at: number } | undefined
   if (pending === undefined) return
   const isFresh = (await $.clock.now()) - pending.at < 24 * 60 * 60 * 1000
@@ -157,20 +242,31 @@ const fillPendingHandoff = async ($: EngineInterface) => {
   await $.prompt.fill({ text: `Read @${pending.path} and continue the work from there.` })
 }
 
+const numberOr = (value: unknown, fallback: number) => (typeof value === 'number' ? value : fallback)
 
 export const register: Register = (on, options) => {
-  const ttlMs = options.cacheTtl === '1h' ? 60 * 60 * 1000 : 5 * 60 * 1000
-  const redAt = typeof options.redAtPercent === 'number' ? options.redAtPercent : 50
-  const notifyAfter = typeof options.notifyAfterSeconds === 'number' ? options.notifyAfterSeconds : 60
-  const cfg: Config = { ttlMs, redAt, warnedRed: false }
+  const notifyAfter = numberOr(options.notifyAfterSeconds, 60)
+  const cfg: Config = {
+    compactAt: numberOr(options.compactAtPercent, 40),
+    handoffAt: numberOr(options.handoffAtPercent, 70),
+    breaks: parseBreaks(options.breakTimes ?? '17:30 end of work, 22:30 bedtime'),
+    leadMinutes: numberOr(options.breakLeadMinutes, 30),
+    longSessionMinutes: numberOr(options.longSessionHours, 3) * 60,
+    offsetMinutes: 0,
+    startedAt: 0,
+    lastSuggested: null,
+  }
+  const failedChecks = new Set<string>()
   let turnStartedAt = 0
 
   on('session.start', async ($, e, next) => {
     const result = await next(e)
+    cfg.startedAt = (await $.session.usage()).startedAt
+    cfg.offsetMinutes = await localOffsetMinutes($)
     await $.command.register({ name: 'handoff', description: 'Save a handoff note, clear, and continue in a fresh session' })
     await $.command.register({ name: 'reflect', description: 'Review this session and propose rule, memory and skill updates' })
-    await $.command.register({ name: 'hud', description: 'Show or hide the Compact, Handoff and Reflect buttons above the prompt' })
-    $.clock.every(TICK_MS, () => void refresh($, cfg))
+    await $.command.register({ name: 'hud', description: 'Turn the Compact / Handoff / Reflect suggestions on or off' })
+    $.clock.every(TICK_MS, () => void refresh($, cfg).catch(() => undefined))
     await refresh($, cfg)
     await fillPendingHandoff($)
 
@@ -180,12 +276,37 @@ export const register: Register = (on, options) => {
   on('session.end', async ($, e, next) => {
     const result = await next(e)
     if (e.reason === 'clear') {
-      await update($, lastReplyAt, () => null)
+      cfg.startedAt = await $.clock.now()
+      cfg.lastSuggested = null
+      failedChecks.clear()
+      await update($, reflectReason, () => null)
       $.clock.after(500, () => void fillPendingHandoff($))
     }
 
     return result
   })
+
+  on('prompt.submit', async ($, e, next) => {
+    const isPerson = e.origin.kind === 'composer' || e.origin.kind === 'bridge' || e.origin.kind === 'sdk'
+    if (isPerson && !e.text.startsWith('/') && isCorrection(e.text)) {
+      await setReflect($, 'You just corrected me: save it as a rule')
+    }
+
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const result = await next(e)
+    const key = checkKey(e.command)
+    if (key === undefined || result.deny !== undefined) return result
+    if (result.isError === true) {
+      failedChecks.add(key)
+    } else if (failedChecks.delete(key)) {
+      await setReflect($, `\`${key}\` passes now: save what fixed it`)
+    }
+
+    return result
+  }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {
     turnStartedAt = await $.clock.now()
@@ -193,69 +314,68 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('turn.step', async function* ($, e, next) {
-    const result = yield* next(e)
-    if (e.agentId === undefined) {
-      const at = await $.clock.now()
-      await update($, lastReplyAt, () => at)
-    }
-
-    return result
-  })
-
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
-    if (e.agentId === undefined) {
-      await refresh($, cfg)
-      const seconds = Math.round(((await $.clock.now()) - turnStartedAt) / 1000)
-      if (notifyAfter > 0 && turnStartedAt > 0 && seconds >= notifyAfter) {
-        void $.ui.notify(`Done after ${seconds}s.`, { title: 'Claude finished' })
-      }
+    if (e.agentId !== undefined) return result
+
+    const found = await refresh($, cfg)
+    if (!(await read($, isHidden))) await suggest($, cfg, found)
+    const seconds = Math.round(((await $.clock.now()) - turnStartedAt) / 1000)
+    if (notifyAfter > 0 && turnStartedAt > 0 && seconds >= notifyAfter) {
+      void $.ui.notify(`Done after ${seconds}s.`, { title: 'Claude finished' })
     }
 
     return result
   })
 
-  on('command.run', { command: 'handoff' }, async $ => ({ text: await handoff($) }))
+  on('command.run', { command: 'handoff' }, async $ => ({ text: await handoff($, cfg) }))
   on('command.run', { command: 'reflect' }, async $ => ({ text: await reflect($) }))
   on('command.run', { command: 'hud' }, async $ => {
     await update($, isHidden, hidden => !hidden)
-    await refresh($, cfg).catch(() => undefined)
 
-    return { text: (await read($, isHidden)) ? 'HUD hidden.' : 'HUD shown.' }
+    return { text: (await read($, isHidden)) ? 'Suggestions off.' : 'Suggestions on.' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey || (await read($, isHidden))) return next(e)
+    if (e.props.hasSurvey || e.props.isWorking || (await read($, isHidden))) return next(e)
+
+    const working = await read($, busy)
+    const list = await read($, hints)
+    const isSnoozed = (await read($, snoozedUntil)) > (await $.clock.now())
+    if (working === null && (list.length === 0 || isSnoozed)) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
-    const fill = await read($, usage)
-    const working = await read($, busy)
-    const percent = fill?.percent ?? null
-    const isRed = percent !== null && percent >= redAt
-
-    const isIdle = !e.props.isWorking && working === null
-    if (!isIdle && working === null && !isRed) return next(e)
+    if (working !== null) return <Text dimColor>{working}</Text>
 
     return (
-      <Box flexDirection="row" gap={1}>
-        {isRed && (
-          <Text color="error" bold>
-            ctx {percent}%
-          </Text>
-        )}
-        {working !== null && <Text dimColor> {working}</Text>}
-        {isIdle && <Button key="compact" label="Compact" onPress={() => compact($, cfg)} />}
-        {isIdle && (
+      <Box flexDirection="column">
+        {list.map(hint => (
+          <Box key={`row-${hint.kind}`} flexDirection="row" gap={1}>
+            <Text color={hint.kind === 'reflect' ? 'suggestion' : hint.kind === 'compact' ? 'warning' : 'claude'}>
+              {ICONS[hint.kind]} {hint.reason}
+            </Text>
+            <Button
+              key={hint.kind}
+              label={LABELS[hint.kind]}
+              onPress={async () => {
+                if (hint.kind === 'compact') await compact($, cfg)
+                else if (hint.kind === 'handoff') $.ui.toast(await handoff($, cfg))
+                else await reflect($)
+              }}
+            />
+          </Box>
+        ))}
+        <Box flexDirection="row">
           <Button
-            key="handoff"
-            label="Handoff"
+            key="later"
+            label="Not now"
+            plain
             onPress={async () => {
-              $.ui.toast(await handoff($))
+              const until = (await $.clock.now()) + SNOOZE_MS
+              await update($, snoozedUntil, () => until)
             }}
           />
-        )}
-        {isIdle && <Button key="reflect" label="Reflect" onPress={() => reflect($)} />}
+        </Box>
       </Box>
     )
   })

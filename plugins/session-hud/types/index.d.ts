@@ -1,18 +1,13 @@
-export type HudUsage = {
-  percent: number | null
-  tokens: number | null
-  window: number
-  fiveHour: number | null
-  sevenDay: number | null
-  usd: number | null
-}
+export type HintKind = 'compact' | 'handoff' | 'reflect'
+
+export type Hint = { kind: HintKind; reason: string }
 
 declare module 'claude-code' {
   interface PluginState {
     'session-hud': {
-      now: number
-      lastReplyAt: number | null
-      usage: HudUsage | null
+      hints: Hint[]
+      reflectReason: string | null
+      snoozedUntil: number
       busy: string | null
       isHidden: boolean
     }

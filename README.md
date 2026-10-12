@@ -11,6 +11,7 @@ One repo for everything that makes Claude Code better for me: mods, skills, rule
 | `rules/global.md` | My global rules and preferences | Imported from `~/.claude/CLAUDE.md` |
 | `knowledge/` | Notes worth keeping (KEs) | Claude reads and writes them on request (`kit-capture` skill) |
 | `ideas/BACKLOG.md` | Parked ideas; `ideas/notes/` holds research on them | `/idea`, `/ideas`, and the `park_idea` tool |
+| `statusline/statusline.py` | Two-line colored status line | Set as `statusLine` in `~/.claude/settings.json` by `install.sh` |
 | `cloud/setup.sh` | Setup script for cloud environments | Paste into the environment's setup script |
 
 ## Install on a machine
@@ -40,11 +41,20 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/wchf211/claude-kit/main/
 
 That only works if the repo is public. For a private repo, paste the body of `cloud/setup.sh` instead and make sure the environment can clone it (add the repo to the project, so its sessions have GitHub access).
 
+## The status line
+
+```text
+Opus 5.5 high │ ctx 34% 340k/1M │ cache 42m │ 5h 31% ↻2h11m 7d 18% │ $1.23
+~/code/pipeline ⎇ main* │ # Fix consumer lag
+```
+
+Model and effort, context (green, yellow from 35%, red from 50%), the real prompt-cache expiry, the 5-hour quota with its reset time, the 7-day quota, cost, folder, git branch (`*` when dirty), worktree and session name. Green is fine, yellow means look soon, red means act. It needs `python3`. Change thresholds with env vars such as `CLAUDE_SL_CTX_RED=60`. If you already have a status line, `install.sh` keeps it; run `KIT_FORCE_STATUSLINE=1 ~/claude-kit/install.sh` to switch.
+
 ## The mods
 
 | Mod | What you see | Commands |
 | --- | ------------ | -------- |
-| `session-hud` | Status line: `ctx 34% (68k/200k) · cache 3:12 · 5h 23% · 7d 41% · $1.24`, with 🟡 from 35% and 🔴 from 50% context. Above the prompt: `[Compact] [Handoff] [Reflect]`, plus a red `ctx` warning once past 50%. | `/handoff`, `/reflect`, `/hud` (hide the buttons) |
+| `session-hud` | Stays hidden until it helps. Then it shows a line above the prompt with the reason and one button: **Compact** once context passes 40%, **Handoff** before your break times (default 17:30 and 22:30), past 70% context or after a 3h session, **Reflect** right after you correct Claude or a failing test/build starts passing. It also puts the matching command (`/compact`, `/handoff`, `/reflect`) in the prompt box as a Tab suggestion. | `/handoff`, `/reflect`, `/hud` (suggestions on/off) |
 | `safety-guard` | Blocks force push, `rm -rf /`, `git reset --hard`, `terraform apply/destroy`, prod `kubectl`/`helm` changes, `DROP TABLE`, `curl \| sh`, and reads or edits of `.env`, keys and credentials. Claude gets the reason and asks you instead. | none |
 | `auto-format` | After each Edit or Write, runs the formatter for that file type (ruff/black, gofmt, prettier, rustfmt, shfmt, terraform fmt) and shows lint errors (ruff, eslint, shellcheck) to Claude. Missing tools are skipped. | none |
 | `correction-catcher` | When you correct Claude ("no, use pnpm", "I said…"), it logs the correction to `~/.claude/corrections.md` and shows a toast. `/reflect` turns these into rules. | none |
@@ -70,6 +80,6 @@ for p in ~/claude-kit/plugins/*/; do claude plugin validate "$p" && claude plugi
 
 ## Notes
 
-- The cache timer is an estimate. It counts down from the last model reply, because the API does not report the real expiry.
+- The cache time comes from Claude Code's own `prompt_cache.expires_at`, so it matches the real TTL (5m or 1h).
 - `safety-guard` is pattern based. It catches common mistakes, not every way to do damage. Add your own patterns in `/config` (separated by `;;`).
 - `auto-format` changes files after Claude edits them, so it tells Claude to read the file again before its next edit.

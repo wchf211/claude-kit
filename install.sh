@@ -27,7 +27,27 @@ else
   echo "rules   already imported"
 fi
 
-# 3. Mods: the kit folder is a local marketplace, read in place, so a git pull + /reload-plugins updates them.
+# 3. Status line: point settings.json at the kit's script, unless another status line is already set.
+SETTINGS="$CLAUDE_HOME/settings.json" STATUSLINE="python3 $KIT/statusline/statusline.py" FORCE="${KIT_FORCE_STATUSLINE:-}" python3 - <<'PY'
+import json, os
+path, command, force = os.environ["SETTINGS"], os.environ["STATUSLINE"], os.environ["FORCE"]
+try:
+    with open(path) as f:
+        settings = json.load(f)
+except (OSError, ValueError):
+    settings = {}
+current = (settings.get("statusLine") or {}).get("command", "")
+if current and "claude-kit" not in current and not force:
+    print("status  kept your own status line (KIT_FORCE_STATUSLINE=1 ./install.sh replaces it)")
+else:
+    settings["statusLine"] = {"type": "command", "command": command, "padding": 0}
+    with open(path, "w") as f:
+        json.dump(settings, f, indent=2)
+        f.write("\n")
+    print("status  status line set")
+PY
+
+# 4. Mods: the kit folder is a local marketplace, read in place, so a git pull + /reload-plugins updates them.
 if claude plugin marketplace list 2>/dev/null | grep -q "$MARKETPLACE"; then
   claude plugin marketplace update "$MARKETPLACE" >/dev/null
 else

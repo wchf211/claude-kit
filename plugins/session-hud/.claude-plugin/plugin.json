@@ -1,24 +1,39 @@
 {
   "name": "session-hud",
-  "version": "0.3.0",
-  "description": "Status line with context %, prompt-cache timer, rate limits and cost; one-press Compact, Handoff and Reflect buttons above the prompt.",
+  "version": "0.4.0",
+  "description": "Shows Compact, Handoff and Reflect above the prompt only when they help, each with the reason, and suggests the matching command.",
+  "author": { "name": "Daniel" },
   "types": "./types/index.d.ts",
   "userConfig": {
-    "cacheTtl": {
-      "type": "string",
-      "title": "Prompt cache TTL",
-      "description": "How long the prompt cache stays warm after a model reply.",
-      "default": "5m",
-      "options": [
-        "5m",
-        "1h"
-      ]
-    },
-    "redAtPercent": {
+    "compactAtPercent": {
       "type": "number",
-      "title": "Red at context %",
-      "description": "Context fill (percent) where the HUD turns red.",
-      "default": 50
+      "title": "Suggest Compact at context %",
+      "description": "Show the Compact button once the context is this full.",
+      "default": 40
+    },
+    "handoffAtPercent": {
+      "type": "number",
+      "title": "Suggest Handoff at context %",
+      "description": "Show the Handoff button once the context is this full.",
+      "default": 70
+    },
+    "breakTimes": {
+      "type": "string",
+      "title": "Break times",
+      "description": "Times you usually stop, as HH:MM and a label, separated by commas. Handoff is suggested shortly before each.",
+      "default": "17:30 end of work, 22:30 bedtime"
+    },
+    "breakLeadMinutes": {
+      "type": "number",
+      "title": "Minutes before a break",
+      "description": "How early to suggest Handoff before a break time.",
+      "default": 30
+    },
+    "longSessionHours": {
+      "type": "number",
+      "title": "Long session (hours)",
+      "description": "Suggest Handoff when a session has run this long.",
+      "default": 3
     },
     "notifyAfterSeconds": {
       "type": "number",
@@ -26,8 +41,5 @@
       "description": "Send a desktop notification when a turn longer than this ends. 0 turns it off.",
       "default": 60
     }
-  },
-  "author": {
-    "name": "Daniel"
   }
 }
