@@ -70,7 +70,7 @@ Model and effort, context (green, yellow from 35%, red from 50%), the real promp
 
 ## Settings
 
-Each mod has rows in `/config` (for example, cache TTL `5m`/`1h`, the red threshold, the lint toggle, file paths). They are stored in `~/.claude/settings.json` under `pluginConfigs`.
+Each mod has rows in `/config` (for example, break times, the Compact and Handoff thresholds, the lint toggle, file paths). They are stored in `~/.claude/settings.json` under `pluginConfigs`.
 
 ## Check the mods
 
