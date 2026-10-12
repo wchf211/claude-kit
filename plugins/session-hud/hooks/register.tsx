@@ -91,7 +91,9 @@ const refresh = async ($: EngineInterface, cfg: Config) => {
     const left = cfg.ttlMs - (at - replied)
     parts.push(left > 0 ? `cache ${clockText(left)}` : 'cache cold')
   }
-  $.ui.status(parts.length > 0 ? parts.join(' · ') : undefined)
+  // The band shows the same figures, so the status line carries them only while the band is hidden.
+  const isBandShown = !(await read($, isHidden))
+  $.ui.status(isBandShown || parts.length === 0 ? undefined : parts.join(' · '))
 
   if (fill.percent !== null && fill.percent >= cfg.redAt && !cfg.warnedRed) {
     cfg.warnedRed = true
@@ -212,6 +214,7 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'reflect' }, async $ => ({ text: await reflect($) }))
   on('command.run', { command: 'hud' }, async $ => {
     await update($, isHidden, hidden => !hidden)
+    await refresh($, cfg).catch(() => undefined)
 
     return { text: (await read($, isHidden)) ? 'HUD hidden.' : 'HUD shown.' }
   })
