@@ -1,0 +1,14 @@
+{
+  "name": "auto-format",
+  "version": "0.1.0",
+  "description": "Formats each file Claude edits (ruff, gofmt, prettier, rustfmt, shfmt, terraform fmt) and shows lint errors back to Claude.",
+  "author": { "name": "Daniel" },
+  "userConfig": {
+    "lint": {
+      "type": "boolean",
+      "title": "Show lint errors to Claude",
+      "description": "Run a linter (ruff check, eslint, shellcheck) after formatting and tell Claude what it found.",
+      "default": true
+    }
+  }
+}

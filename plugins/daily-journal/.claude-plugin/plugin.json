@@ -1,0 +1,20 @@
+{
+  "name": "daily-journal",
+  "version": "0.1.0",
+  "description": "Keeps a short per-day work log of every session in ~/.claude/journal/, and drafts your standup with /standup.",
+  "author": { "name": "Daniel" },
+  "userConfig": {
+    "journalDir": {
+      "type": "string",
+      "title": "Journal folder",
+      "description": "Where the daily files go. ~ means your home folder.",
+      "default": "~/.claude/journal"
+    },
+    "idleMinutes": {
+      "type": "number",
+      "title": "Write after idle minutes",
+      "description": "Update the journal after the session has been idle this long.",
+      "default": 10
+    }
+  }
+}

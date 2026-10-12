@@ -1,0 +1,13 @@
+{
+  "name": "daniel-kit",
+  "owner": { "name": "Daniel" },
+  "metadata": { "description": "Daniel's Claude Code mods: HUD, safety guard, auto-format, correction catcher, daily journal, idea inbox." },
+  "plugins": [
+    { "name": "session-hud", "source": "./plugins/session-hud" },
+    { "name": "safety-guard", "source": "./plugins/safety-guard" },
+    { "name": "auto-format", "source": "./plugins/auto-format" },
+    { "name": "correction-catcher", "source": "./plugins/correction-catcher" },
+    { "name": "daily-journal", "source": "./plugins/daily-journal" },
+    { "name": "idea-inbox", "source": "./plugins/idea-inbox" }
+  ]
+}

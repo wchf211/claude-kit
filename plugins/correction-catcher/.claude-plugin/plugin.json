@@ -1,0 +1,14 @@
+{
+  "name": "correction-catcher",
+  "version": "0.1.0",
+  "description": "Notices when you correct Claude and logs it to ~/.claude/corrections.md, so /reflect can turn it into a lasting rule.",
+  "author": { "name": "Daniel" },
+  "userConfig": {
+    "logPath": {
+      "type": "string",
+      "title": "Corrections file",
+      "description": "Where corrections are logged. ~ means your home folder.",
+      "default": "~/.claude/corrections.md"
+    }
+  }
+}

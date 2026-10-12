@@ -1,0 +1,14 @@
+{
+  "name": "idea-inbox",
+  "version": "0.1.0",
+  "description": "Park ideas without losing focus: /idea <text> or 'park this' adds them to one backlog file; /ideas lists them.",
+  "author": { "name": "Daniel" },
+  "userConfig": {
+    "backlogPath": {
+      "type": "string",
+      "title": "Backlog file",
+      "description": "The markdown file ideas are added to. ~ means your home folder.",
+      "default": "~/claude-kit/ideas/BACKLOG.md"
+    }
+  }
+}

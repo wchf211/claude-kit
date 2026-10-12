@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Installs the kit into Claude Code on this machine. Safe to run again after a git pull.
+set -euo pipefail
+
+KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+MARKETPLACE="daniel-kit"
+
+echo "Kit: $KIT"
+mkdir -p "$CLAUDE_HOME/skills"
+
+# 1. Skills: link each kit skill into ~/.claude/skills so every project sees it.
+for dir in "$KIT"/skills/*/; do
+  [ -f "$dir/SKILL.md" ] || continue
+  name="$(basename "$dir")"
+  ln -sfn "${dir%/}" "$CLAUDE_HOME/skills/$name"
+  echo "skill   $name"
+done
+
+# 2. Global rules: import rules/global.md from ~/.claude/CLAUDE.md (added once).
+import_line="@$KIT/rules/global.md"
+touch "$CLAUDE_HOME/CLAUDE.md"
+if ! grep -qxF "$import_line" "$CLAUDE_HOME/CLAUDE.md"; then
+  printf '\n%s\n' "$import_line" >> "$CLAUDE_HOME/CLAUDE.md"
+  echo "rules   imported into $CLAUDE_HOME/CLAUDE.md"
+else
+  echo "rules   already imported"
+fi
+
+# 3. Mods: the kit folder is a local marketplace, read in place, so a git pull + /reload-plugins updates them.
+if claude plugin marketplace list 2>/dev/null | grep -q "$MARKETPLACE"; then
+  claude plugin marketplace update "$MARKETPLACE" >/dev/null
+else
+  claude plugin marketplace add "$KIT" >/dev/null
+fi
+for dir in "$KIT"/plugins/*/; do
+  name="$(basename "$dir")"
+  if claude plugin install "$name@$MARKETPLACE" >/dev/null 2>&1; then
+    echo "mod     $name"
+  else
+    echo "mod     $name (already installed or failed; see: claude plugin list)"
+  fi
+done
+
+echo "Done. Start a new Claude Code session (or run /reload-plugins) to load the mods."

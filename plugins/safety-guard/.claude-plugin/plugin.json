@@ -1,0 +1,14 @@
+{
+  "name": "safety-guard",
+  "version": "0.1.0",
+  "description": "Blocks risky shell commands (force push, rm -rf /, terraform apply, prod kubectl, DROP TABLE) and edits to secret files.",
+  "author": { "name": "Daniel" },
+  "userConfig": {
+    "extraBlocked": {
+      "type": "string",
+      "title": "Extra blocked patterns",
+      "description": "More regexes to block in shell commands, separated by ;; (for example: gcloud .* delete;;bq rm).",
+      "default": ""
+    }
+  }
+}
