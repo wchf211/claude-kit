@@ -44,7 +44,7 @@ That only works if the repo is public. For a private repo, paste the body of `cl
 
 | Mod | What you see | Commands |
 | --- | ------------ | -------- |
-| `session-hud` | A band above the prompt: `ctx 34% (68k/200k) · cache 3:12 · 5h 23% · 7d 41% · $1.24 [Compact] [Handoff] [Reflect]`. Context turns red at 50%. | `/handoff`, `/reflect`, `/hud` |
+| `session-hud` | Status line: `ctx 34% (68k/200k) · cache 3:12 · 5h 23% · 7d 41% · $1.24`, with 🟡 from 35% and 🔴 from 50% context. Above the prompt: `[Compact] [Handoff] [Reflect]`, plus a red `ctx` warning once past 50%. | `/handoff`, `/reflect`, `/hud` (hide the buttons) |
 | `safety-guard` | Blocks force push, `rm -rf /`, `git reset --hard`, `terraform apply/destroy`, prod `kubectl`/`helm` changes, `DROP TABLE`, `curl \| sh`, and reads or edits of `.env`, keys and credentials. Claude gets the reason and asks you instead. | none |
 | `auto-format` | After each Edit or Write, runs the formatter for that file type (ruff/black, gofmt, prettier, rustfmt, shfmt, terraform fmt) and shows lint errors (ruff, eslint, shellcheck) to Claude. Missing tools are skipped. | none |
 | `correction-catcher` | When you correct Claude ("no, use pnpm", "I said…"), it logs the correction to `~/.claude/corrections.md` and shows a toast. `/reflect` turns these into rules. | none |

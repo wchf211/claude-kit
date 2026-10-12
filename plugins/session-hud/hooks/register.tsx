@@ -57,7 +57,6 @@ const usageOf = async ($: EngineInterface): Promise<HudUsage> => {
   }
 }
 
-const limitColor = (used: number) => (used >= 80 ? 'error' : used >= 60 ? 'warning' : 'inactive')
 
 const kTokens = (n: number) => `${Math.round(n / 1000)}k`
 
@@ -78,6 +77,22 @@ const stamp = (ms: number) => {
 
 type Config = { ttlMs: number; redAt: number; warnedRed: boolean }
 
+// The light, always-on view: the status line carries every figure, marked when one needs attention.
+export function statusText(fill: HudUsage, cacheLeftMs: number | null, redAt: number): string | undefined {
+  const parts: string[] = []
+  if (fill.percent !== null) {
+    const mark = fill.percent >= redAt ? '🔴 ' : fill.percent >= Math.max(0, redAt - 15) ? '🟡 ' : ''
+    const size = fill.tokens === null ? '' : ` (${kTokens(fill.tokens)}/${kTokens(fill.window)})`
+    parts.push(`${mark}ctx ${fill.percent}%${size}`)
+  }
+  if (cacheLeftMs !== null) parts.push(cacheLeftMs > 0 ? `cache ${clockText(cacheLeftMs)}` : 'cache cold')
+  if (fill.fiveHour !== null) parts.push(`5h ${fill.fiveHour}%`)
+  if (fill.sevenDay !== null) parts.push(`7d ${fill.sevenDay}%`)
+  if (fill.usd !== null && fill.usd > 0) parts.push(`$${fill.usd.toFixed(2)}`)
+
+  return parts.length === 0 ? undefined : parts.join(' · ')
+}
+
 const refresh = async ($: EngineInterface, cfg: Config) => {
   const at = await $.clock.now()
   const fill = await usageOf($)
@@ -85,15 +100,7 @@ const refresh = async ($: EngineInterface, cfg: Config) => {
   await update($, usage, () => fill)
 
   const replied = await read($, lastReplyAt)
-  const parts: string[] = []
-  if (fill.percent !== null) parts.push(`ctx ${fill.percent}%`)
-  if (replied !== null) {
-    const left = cfg.ttlMs - (at - replied)
-    parts.push(left > 0 ? `cache ${clockText(left)}` : 'cache cold')
-  }
-  // The band shows the same figures, so the status line carries them only while the band is hidden.
-  const isBandShown = !(await read($, isHidden))
-  $.ui.status(isBandShown || parts.length === 0 ? undefined : parts.join(' · '))
+  $.ui.status(statusText(fill, replied === null ? null : cfg.ttlMs - (at - replied), cfg.redAt))
 
   if (fill.percent !== null && fill.percent >= cfg.redAt && !cfg.warnedRed) {
     cfg.warnedRed = true
@@ -155,7 +162,6 @@ export const register: Register = (on, options) => {
   const ttlMs = options.cacheTtl === '1h' ? 60 * 60 * 1000 : 5 * 60 * 1000
   const redAt = typeof options.redAtPercent === 'number' ? options.redAtPercent : 50
   const notifyAfter = typeof options.notifyAfterSeconds === 'number' ? options.notifyAfterSeconds : 60
-  const warnAt = Math.max(0, redAt - 15)
   const cfg: Config = { ttlMs, redAt, warnedRed: false }
   let turnStartedAt = 0
 
@@ -163,7 +169,7 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     await $.command.register({ name: 'handoff', description: 'Save a handoff note, clear, and continue in a fresh session' })
     await $.command.register({ name: 'reflect', description: 'Review this session and propose rule, memory and skill updates' })
-    await $.command.register({ name: 'hud', description: 'Show or hide the session HUD above the prompt' })
+    await $.command.register({ name: 'hud', description: 'Show or hide the Compact, Handoff and Reflect buttons above the prompt' })
     $.clock.every(TICK_MS, () => void refresh($, cfg))
     await refresh($, cfg)
     await fillPendingHandoff($)
@@ -224,33 +230,20 @@ export const register: Register = (on, options) => {
 
     const { Box, Button, Text } = $.ui.resolve(e)
     const fill = await read($, usage)
-    const at = await read($, now)
-    const replied = await read($, lastReplyAt)
     const working = await read($, busy)
-
     const percent = fill?.percent ?? null
-    const ctxColor = percent === null ? 'inactive' : percent >= redAt ? 'error' : percent >= warnAt ? 'warning' : 'success'
-    const ctxText =
-      percent === null || fill === null
-        ? 'ctx –'
-        : `ctx ${percent}%${fill.tokens === null ? '' : ` (${kTokens(fill.tokens)}/${kTokens(fill.window)})`}`
-
-    const left = replied === null ? null : ttlMs - (at - replied)
-    const cacheColor = left === null ? 'inactive' : left <= 0 ? 'error' : left < 60_000 ? 'warning' : 'success'
-    const cacheText = left === null ? 'cache –' : left <= 0 ? 'cache cold' : `cache ${clockText(left)}`
+    const isRed = percent !== null && percent >= redAt
 
     const isIdle = !e.props.isWorking && working === null
+    if (!isIdle && working === null && !isRed) return next(e)
 
     return (
       <Box flexDirection="row" gap={1}>
-        <Text color={ctxColor} bold>
-          {ctxText}
-        </Text>
-        <Text dimColor>·</Text>
-        <Text color={cacheColor}>{cacheText}</Text>
-        {fill !== null && fill.fiveHour !== null && <Text color={limitColor(fill.fiveHour)}>· 5h {fill.fiveHour}%</Text>}
-        {fill !== null && fill.sevenDay !== null && <Text color={limitColor(fill.sevenDay)}>· 7d {fill.sevenDay}%</Text>}
-        {fill !== null && fill.usd !== null && fill.usd > 0 && <Text dimColor>· ${fill.usd.toFixed(2)}</Text>}
+        {isRed && (
+          <Text color="error" bold>
+            ctx {percent}%
+          </Text>
+        )}
         {working !== null && <Text dimColor> {working}</Text>}
         {isIdle && <Button key="compact" label="Compact" onPress={() => compact($, cfg)} />}
         {isIdle && (

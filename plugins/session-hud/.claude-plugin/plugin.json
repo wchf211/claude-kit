@@ -1,7 +1,7 @@
 {
   "name": "session-hud",
-  "version": "0.2.1",
-  "description": "Context %, prompt-cache timer, rate-limit and cost meter, and one-press Compact, Handoff and Reflect buttons above the prompt.",
+  "version": "0.3.0",
+  "description": "Status line with context %, prompt-cache timer, rate limits and cost; one-press Compact, Handoff and Reflect buttons above the prompt.",
   "types": "./types/index.d.ts",
   "userConfig": {
     "cacheTtl": {
