@@ -1,20 +1,40 @@
 {
   "name": "daily-journal",
-  "version": "0.1.0",
-  "description": "Keeps a short per-day work log of every session in ~/.claude/journal/, and drafts your standup with /standup.",
-  "author": { "name": "Daniel" },
+  "version": "0.2.0",
+  "description": "Keeps a per-day work log of every session, wraps up each day automatically (summary, learnings, improvements, tomorrow), and drafts your standup.",
+  "author": {
+    "name": "Daniel"
+  },
   "userConfig": {
     "journalDir": {
       "type": "string",
       "title": "Journal folder",
       "description": "Where the daily files go. ~ means your home folder.",
-      "default": "~/.claude/journal"
+      "default": "~/claude-kit/journal"
     },
     "idleMinutes": {
       "type": "number",
       "title": "Write after idle minutes",
       "description": "Update the journal after the session has been idle this long.",
       "default": 10
+    },
+    "autoWrapUp": {
+      "type": "boolean",
+      "title": "Wrap up the day automatically",
+      "description": "At your end-of-work time (from the schedule file), and next time you start if it was missed.",
+      "default": true
+    },
+    "syncJournal": {
+      "type": "boolean",
+      "title": "Push the journal",
+      "description": "Commit and push the journal and schedule when they live in a git repo (claude-kit), so the weekly review can read them.",
+      "default": true
+    },
+    "scheduleFile": {
+      "type": "string",
+      "title": "Schedule file",
+      "description": "Where your end-of-work time comes from. ~ means your home folder.",
+      "default": "~/claude-kit/schedule.md"
     }
   }
 }

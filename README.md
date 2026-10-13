@@ -10,6 +10,8 @@ One repo for everything that makes Claude Code better for me: mods, skills, rule
 | `skills/` | Personal skills, one folder each | Linked into `~/.claude/skills/` |
 | `rules/global.md` | My global rules and preferences | Imported from `~/.claude/CLAUDE.md` |
 | `knowledge/` | Notes worth keeping (KEs) | Claude reads and writes them on request (`kit-capture` skill) |
+| `schedule.md` | Your breaks: regular ones and dated changes | Read by `session-hud` and `daily-journal`; change it with `/breaks` |
+| `journal/` | Daily journal with wrap-ups, and `weekly/` reviews | Written and pushed by `daily-journal` |
 | `ideas/BACKLOG.md` | Parked ideas; `ideas/notes/` holds research on them | `/idea`, `/ideas`, and the `park_idea` tool |
 | `statusline/statusline.py` | Two-line colored status line | Set as `statusLine` in `~/.claude/settings.json` by `install.sh` |
 | `cloud/setup.sh` | Setup script for cloud environments | Paste into the environment's setup script |
@@ -54,12 +56,27 @@ Model and effort, context as used/total tokens (green, yellow from 35%, red from
 
 | Mod | What you see | Commands |
 | --- | ------------ | -------- |
-| `session-hud` | Stays hidden until it helps. Then it shows a line above the prompt with the reason and one button: **Compact** once context passes 40%, **Handoff** before your break times (default 17:30 and 22:30), past 70% context or after a 3h session, **Reflect** right after you correct Claude or a failing test/build starts passing. It also puts the matching command (`/compact`, `/handoff`, `/reflect`) in the prompt box as a Tab suggestion. | `/handoff`, `/reflect`, `/hud` (suggestions on/off) |
+| `session-hud` | Stays hidden until it helps. Then it shows a line above the prompt with the reason and one button: **Compact** once context passes 40%, **Handoff** 30 minutes before a break in `schedule.md`, past 70% context or after a 3h session, **Reflect** right after you correct Claude or a failing test/build starts passing. It also puts the matching command (`/compact`, `/handoff`, `/reflect`) in the prompt box as a Tab suggestion. | `/handoff`, `/reflect`, `/breaks` (today's breaks, or `/breaks today I stop at 4`), `/hud` (suggestions on/off) |
 | `safety-guard` | Blocks force push, `rm -rf /`, `git reset --hard`, `terraform apply/destroy`, prod `kubectl`/`helm` changes, `DROP TABLE`, `curl \| sh`, and reads or edits of `.env`, keys and credentials. Claude gets the reason and asks you instead. | none |
 | `auto-format` | After each Edit or Write, runs the formatter for that file type (ruff/black, gofmt, prettier, rustfmt, shfmt, terraform fmt) and shows lint errors (ruff, eslint, shellcheck) to Claude. Missing tools are skipped. | none |
 | `correction-catcher` | When you correct Claude ("no, use pnpm", "I said…"), it logs the correction to `~/.claude/corrections.md` and shows a toast. `/reflect` turns these into rules. | none |
-| `daily-journal` | After 10 idle minutes, and when a session ends, writes a 3-bullet summary to `~/.claude/journal/<date>.md`. | `/journal`, `/standup` |
+| `daily-journal` | After 10 idle minutes, and when a session ends, writes a 3-bullet summary to `journal/<date>.md`. At your end-of-work time it adds the day's **Wrap-up** (summary, done, learned, improve, tomorrow); a missed day is wrapped up the next time you start. Then it commits and pushes the journal. | `/journal`, `/wrapup`, `/standup` |
 | `idea-inbox` | Parks ideas in `ideas/BACKLOG.md` without leaving your task. Claude also parks one when you say "park this" or "for later". | `/idea <text>`, `/ideas` |
+
+### Your schedule
+
+`schedule.md` has lines like these:
+
+```text
+- weekdays 17:30 end of work
+- Tue,Thu 15:15 kids pickup
+- daily 22:30 bedtime
+- 2026-10-14 16:00 end of work (dentist)
+- 2026-11-26 off Thanksgiving
+- 2026-12-21..2027-01-02 off winter break
+```
+
+A dated time replaces the regular entry with the same label that day. `off` drops that day's regular entries, except `daily` ones. You don't have to keep it up to date yourself: a weekly review (a cloud routine, Sunday evening) reads the journal, compares when you really stopped with the plan, adds holidays, and tells you what it changed.
 
 ### The improve loop
 

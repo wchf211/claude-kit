@@ -2,6 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Hint, HintKind } from '../types'
+import { breaksOn, dayAt } from './schedule'
+import type { BreakTime } from './schedule'
 
 const hints = atom({ plugin: 'session-hud', key: 'hints' } as const, [])
 const reflectReason = atom({ plugin: 'session-hud', key: 'reflectReason' } as const, null)
@@ -54,7 +56,7 @@ const REFLECT_PROMPT = `Reflect on this session so you get better next time. Do 
    - Remove the handled entries from ~/.claude/corrections.md.
    - If ~/claude-kit changed, commit there with a one-line message (do not push).`
 
-export type BreakTime = { minute: number; label: string }
+export type { BreakTime }
 
 export type HintInput = {
   percent: number | null
@@ -72,6 +74,20 @@ export type HintInput = {
 const two = (n: number) => String(n).padStart(2, '0')
 
 const hhmm = (minute: number) => `${two(Math.floor(minute / 60) % 24)}:${two(minute % 60)}`
+
+const breaksPrompt = (file: string, words: string) => `Update my schedule file ${file} (create it if missing) from what I just said:
+
+"${words}"
+
+Keep its format: one line per entry under "## Regular" or "## Dates", like
+- weekdays 17:30 end of work
+- Tue,Thu 15:15 kids pickup
+- daily 22:30 bedtime
+- 2026-10-14 16:00 end of work (dentist)
+- 2026-11-26 off Thanksgiving
+- 2026-12-21..2027-01-02 off winter break
+"today" and "tomorrow" mean real dates; use the local date from \`date\`. A dated time replaces the regular entry with the same label that day. "off" drops that day's regular entries except "daily" ones.
+Remove dated entries older than 14 days. Show me the diff, then commit the file if it is in a git repo (do not push).`
 
 // "17:30 end of work, 22:30 bedtime" -> [{ minute: 1050, label: "end of work" }, ...]
 export function parseBreaks(text: unknown): BreakTime[] {
@@ -150,11 +166,28 @@ type Config = {
   compactAt: number
   handoffAt: number
   breaks: BreakTime[]
+  scheduleFile: string
   leadMinutes: number
   longSessionMinutes: number
   offsetMinutes: number
   startedAt: number
   lastSuggested: string | null
+}
+
+async function expandHome($: EngineInterface, path: string) {
+  if (!path.startsWith('~')) return path
+  const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? ''
+
+  return home + path.slice(1)
+}
+
+// Today's breaks from the schedule file; the breakTimes setting when there is no file.
+async function todaysBreaks($: EngineInterface, cfg: Config, at: number): Promise<BreakTime[]> {
+  try {
+    return breaksOn(await $.fs.read(cfg.scheduleFile), dayAt(at, cfg.offsetMinutes))
+  } catch {
+    return cfg.breaks
+  }
 }
 
 async function refresh($: EngineInterface, cfg: Config) {
@@ -163,7 +196,7 @@ async function refresh($: EngineInterface, cfg: Config) {
   const found = computeHints({
     percent: context.percent ?? null,
     localMinute: Math.floor((((at / 60_000 + cfg.offsetMinutes) % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES),
-    breaks: cfg.breaks,
+    breaks: await todaysBreaks($, cfg, at),
     leadMinutes: cfg.leadMinutes,
     sessionMinutes: cfg.startedAt === 0 ? 0 : (at - cfg.startedAt) / 60_000,
     turns: await $.session.turns(),
@@ -250,6 +283,7 @@ export const register: Register = (on, options) => {
     compactAt: numberOr(options.compactAtPercent, 40),
     handoffAt: numberOr(options.handoffAtPercent, 70),
     breaks: parseBreaks(options.breakTimes ?? '17:30 end of work, 22:30 bedtime'),
+    scheduleFile: typeof options.scheduleFile === 'string' && options.scheduleFile.length > 0 ? options.scheduleFile : '~/claude-kit/schedule.md',
     leadMinutes: numberOr(options.breakLeadMinutes, 30),
     longSessionMinutes: numberOr(options.longSessionHours, 3) * 60,
     offsetMinutes: 0,
@@ -263,8 +297,10 @@ export const register: Register = (on, options) => {
     const result = await next(e)
     cfg.startedAt = (await $.session.usage()).startedAt
     cfg.offsetMinutes = await localOffsetMinutes($)
+    cfg.scheduleFile = await expandHome($, cfg.scheduleFile)
     await $.command.register({ name: 'handoff', description: 'Save a handoff note, clear, and continue in a fresh session' })
     await $.command.register({ name: 'reflect', description: 'Review this session and propose rule, memory and skill updates' })
+    await $.command.register({ name: 'breaks', description: 'Show today\'s breaks, or tell me a schedule change: /breaks today I stop at 4' })
     await $.command.register({ name: 'hud', description: 'Turn the Compact / Handoff / Reflect suggestions on or off' })
     $.clock.every(TICK_MS, () => void refresh($, cfg).catch(() => undefined))
     await refresh($, cfg)
@@ -330,6 +366,18 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'handoff' }, async $ => ({ text: await handoff($, cfg) }))
   on('command.run', { command: 'reflect' }, async $ => ({ text: await reflect($) }))
+  on('command.run', { command: 'breaks' }, async ($, e) => {
+    const words = e.args.trim()
+    if (words.length > 0) {
+      await $.prompt.submit({ text: breaksPrompt(cfg.scheduleFile, words) })
+
+      return { text: 'Updating your schedule.' }
+    }
+    const breaks = await todaysBreaks($, cfg, await $.clock.now())
+    const list = breaks.map(one => `${hhmm(one.minute)} ${one.label}`).join(', ')
+
+    return { text: breaks.length === 0 ? `No breaks today (${cfg.scheduleFile}).` : `Today: ${list}.` }
+  })
   on('command.run', { command: 'hud' }, async $ => {
     await update($, isHidden, hidden => !hidden)
 
