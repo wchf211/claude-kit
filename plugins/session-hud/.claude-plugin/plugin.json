@@ -1,7 +1,7 @@
 {
   "name": "session-hud",
-  "version": "0.5.0",
-  "description": "Shows Compact, Handoff and Reflect above the prompt only when they help, each with the reason, and suggests the matching command.",
+  "version": "0.6.0",
+  "description": "Shows Compact, Handoff and Reflect above the prompt only when they help, each with the reason, and suggests the matching command. Reflect also shows when corrections pile up or a session runs long.",
   "author": {
     "name": "Daniel"
   },
@@ -42,6 +42,24 @@
       "title": "Long session (hours)",
       "description": "Suggest Handoff when a session has run this long.",
       "default": 3
+    },
+    "reflectAtCorrections": {
+      "type": "number",
+      "title": "Suggest Reflect at N corrections",
+      "description": "Show Reflect when correction-catcher's log has this many open items.",
+      "default": 3
+    },
+    "reflectAfterTurns": {
+      "type": "number",
+      "title": "Suggest Reflect after N turns",
+      "description": "Show Reflect once a session reaches this many turns and has not reflected yet.",
+      "default": 20
+    },
+    "correctionsPath": {
+      "type": "string",
+      "title": "Corrections log",
+      "description": "Same path as correction-catcher's logPath. Open items here count toward the Reflect nudge.",
+      "default": "~/.claude/corrections.md"
     },
     "notifyAfterSeconds": {
       "type": "number",

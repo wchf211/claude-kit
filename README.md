@@ -8,6 +8,7 @@ One repo for everything that makes Claude Code better for me: mods, skills, rule
 | ------ | ---------------- | --------------------------- |
 | `plugins/` | Mods (plugins of function hooks) | The repo is a local marketplace (`daniel-kit`), installed by `install.sh` |
 | `skills/` | Personal skills, one folder each | Linked into `~/.claude/skills/` |
+| `agents/` | Dedicated reviewer subagents (correctness, security, data systems, docs) | Linked into `~/.claude/agents/` |
 | `rules/global.md` | My global rules and preferences | Imported from `~/.claude/CLAUDE.md` |
 | `knowledge/` | Notes worth keeping (KEs) | Claude reads and writes them on request (`kit-capture` skill) |
 | `schedule.md` | Your breaks: regular ones and dated changes | Read by `session-hud` and `daily-journal`; change it with `/breaks` |
@@ -56,7 +57,7 @@ Model and effort, context as used/total tokens (green, yellow from 35%, red from
 
 | Mod | What you see | Commands |
 | --- | ------------ | -------- |
-| `session-hud` | Stays hidden until it helps. Then it shows a line above the prompt with the reason and one button: **Compact** once context passes 40%, **Handoff** 30 minutes before a break in `schedule.md`, past 70% context or after a 3h session, **Reflect** right after you correct Claude or a failing test/build starts passing. It also puts the matching command (`/compact`, `/handoff`, `/reflect`) in the prompt box as a Tab suggestion. | `/handoff`, `/reflect`, `/breaks` (today's breaks, or `/breaks today I stop at 4`), `/hud` (suggestions on/off) |
+| `session-hud` | Stays hidden until it helps. Then it shows a line above the prompt with the reason and one button: **Compact** once context passes 40%, **Handoff** 30 minutes before a break in `schedule.md`, past 70% context or after a 3h session, **Reflect** right after you correct Claude, when a failing test/build starts passing, when 3+ logged corrections are waiting, or after 20 turns without a reflect. It also puts the matching command (`/compact`, `/handoff`, `/reflect`) in the prompt box as a Tab suggestion. | `/handoff`, `/reflect`, `/breaks` (today's breaks, or `/breaks today I stop at 4`), `/hud` (suggestions on/off) |
 | `safety-guard` | Blocks force push, `rm -rf /`, `git reset --hard`, `terraform apply/destroy`, prod `kubectl`/`helm` changes, `DROP TABLE`, `curl \| sh`, and reads or edits of `.env`, keys and credentials. Claude gets the reason and asks you instead. | none |
 | `auto-format` | After each Edit or Write, runs the formatter for that file type (ruff/black, gofmt, prettier, rustfmt, shfmt, terraform fmt) and shows lint errors (ruff, eslint, shellcheck) to Claude. Missing tools are skipped. | none |
 | `correction-catcher` | When you correct Claude ("no, use pnpm", "I said…"), it logs the correction to `~/.claude/corrections.md` and shows a toast. `/reflect` turns these into rules. | none |
