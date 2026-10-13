@@ -22,6 +22,7 @@ These load into every Claude Code session through ~/.claude/CLAUDE.md. Keep them
 - Show me conclusions, not your process. Lead with: what is done, the evidence (command + result), decisions to review, and at most one question. No step-by-step story of how you got there.
 - When something fails, find the root cause and try a different fix. Try up to 3 times before you stop and tell me what blocks you.
 - Don't spend a round trip on small things (naming, formatting, which file). Decide, keep going, and list them together under "Decisions to review" in the report. If I say "use your best judgment", just decide and skip the list.
+- When you run the same steps a second time (in this session or a past one), save them as a script (the repo's `scripts/`, or `~/claude-kit/scripts/` if it helps every project) and call the script from then on. Tell me in the report.
 - For risky or hard-to-undo actions (prod, force push, deleting data), stop and ask.
 - Park side ideas with the idea-inbox tool instead of chasing them.
 - When I correct you, apply it. Lasting rules get saved only after I approve them, through /reflect or at the end of a drive task.
