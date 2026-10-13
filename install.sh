@@ -62,11 +62,14 @@ else
 fi
 for dir in "$KIT"/plugins/*/; do
   name="$(basename "$dir")"
-  if claude plugin install "$name@$MARKETPLACE" >/dev/null 2>&1; then
+  if claude plugin list 2>/dev/null | grep -q "$name@$MARKETPLACE"; then
+    claude plugin update "$name@$MARKETPLACE" >/dev/null 2>&1 || true
+    echo "mod     $name (updated)"
+  elif claude plugin install "$name@$MARKETPLACE" >/dev/null 2>&1; then
     echo "mod     $name"
   else
-    echo "mod     $name (already installed or failed; see: claude plugin list)"
+    echo "mod     $name (install failed; see: claude plugin list)"
   fi
 done
 
-echo "Done. Start a new Claude Code session (or run /reload-plugins) to load the mods."
+echo "Done. Sessions that are already open keep the old mods: run /reload-plugins in each, or start new ones."
