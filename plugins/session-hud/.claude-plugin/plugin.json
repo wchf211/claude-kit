@@ -1,6 +1,6 @@
 {
   "name": "session-hud",
-  "version": "0.6.0",
+  "version": "0.5.1",
   "description": "Shows Compact, Handoff and Reflect above the prompt only when they help, each with the reason, and suggests the matching command. Reflect also shows when corrections pile up or a session runs long.",
   "author": {
     "name": "Daniel"

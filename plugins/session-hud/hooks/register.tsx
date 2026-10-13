@@ -339,6 +339,8 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     cfg.startedAt = (await $.session.usage()).startedAt
+    // Versions before 0.4 pinned a status line; clear one left over from a reload.
+    $.ui.status(undefined)
     cfg.offsetMinutes = await localOffsetMinutes($)
     cfg.scheduleFile = await expandHome($, cfg.scheduleFile)
     await $.command.register({ name: 'handoff', description: 'Save a handoff note, clear, and continue in a fresh session' })
