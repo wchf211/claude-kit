@@ -1,6 +1,6 @@
 {
   "name": "session-hud",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Shows Compact, Handoff and Reflect above the prompt only when they help, each with the reason, and suggests the matching command. Reflect also shows when corrections pile up or a session runs long.",
   "author": {
     "name": "Daniel"
@@ -19,10 +19,16 @@
       "description": "Show the Handoff button once the context is this full.",
       "default": 70
     },
+    "scheduleFile": {
+      "type": "string",
+      "title": "Schedule file",
+      "description": "Your regular breaks and dated changes. Update it with /breaks. ~ means your home folder.",
+      "default": "~/claude-kit/schedule.md"
+    },
     "breakTimes": {
       "type": "string",
-      "title": "Break times",
-      "description": "Times you usually stop, as HH:MM and a label, separated by commas. Handoff is suggested shortly before each.",
+      "title": "Break times (no schedule file)",
+      "description": "Used only when the schedule file is missing: HH:MM and a label, separated by commas.",
       "default": "17:30 end of work, 22:30 bedtime"
     },
     "breakLeadMinutes": {
