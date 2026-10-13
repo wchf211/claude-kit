@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { checkKey, computeHints, isCorrection, parseBreaks } from '../hooks/register'
+import { checkKey, computeHints, countPending, isCorrection, parseBreaks } from '../hooks/register'
 
 const BAND = {
   component: 'AbovePrompt',
@@ -22,6 +22,10 @@ const BASE = {
   sessionMinutes: 20,
   turns: 5,
   reflect: null,
+  reflected: false,
+  pendingCorrections: 0,
+  reflectCorrections: 3,
+  reflectTurns: 20,
   compactAt: 40,
   handoffAt: 70,
   longSessionMinutes: 180,
@@ -49,6 +53,14 @@ test('handoff after a long session', () => {
 
 test('reflect comes first when there is a reason', () => {
   expect(computeHints({ ...BASE, percent: 50, reflect: 'You just corrected me' })[0]?.kind).toBe('reflect')
+})
+
+test('reflect nudge: pending corrections, then long sessions, once per session', () => {
+  expect(computeHints({ ...BASE, pendingCorrections: 3 })[0]?.reason).toBe('3 corrections waiting: save them as rules')
+  expect(computeHints({ ...BASE, turns: 20 })[0]?.reason).toBe('20 turns in: anything worth keeping?')
+  expect(computeHints({ ...BASE, turns: 25, pendingCorrections: 5, reflected: true })).toEqual([])
+  expect(computeHints({ ...BASE, pendingCorrections: 2 })).toEqual([])
+  expect(countPending('# Corrections\n\n- [ ] a\n  - You said: x\n- [x] b\n- [ ] c\n')).toBe(2)
 })
 
 test('break times parse', () => {

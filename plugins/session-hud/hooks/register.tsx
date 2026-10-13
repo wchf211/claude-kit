@@ -64,6 +64,10 @@ export type HintInput = {
   sessionMinutes: number
   turns: number
   reflect: string | null
+  reflected: boolean
+  pendingCorrections: number
+  reflectCorrections: number
+  reflectTurns: number
   compactAt: number
   handoffAt: number
   longSessionMinutes: number
@@ -91,7 +95,13 @@ export function computeHints(input: HintInput): Hint[] {
   const found: Hint[] = []
   const { percent } = input
 
-  if (input.reflect !== null) found.push({ kind: 'reflect', reason: input.reflect })
+  if (input.reflect !== null) {
+    found.push({ kind: 'reflect', reason: input.reflect })
+  } else if (!input.reflected && input.pendingCorrections >= input.reflectCorrections) {
+    found.push({ kind: 'reflect', reason: `${input.pendingCorrections} corrections waiting: save them as rules` })
+  } else if (!input.reflected && input.turns >= input.reflectTurns) {
+    found.push({ kind: 'reflect', reason: `${input.turns} turns in: anything worth keeping?` })
+  }
 
   if (percent !== null && percent >= input.compactAt) {
     found.push({ kind: 'compact', reason: `Context is ${percent}% full` })
@@ -146,12 +156,32 @@ const stamp = (ms: number, offsetMinutes: number) => {
   return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}-${two(d.getUTCHours())}${two(d.getUTCMinutes())}`
 }
 
+// Open items in correction-catcher's log ("- [ ] ..." lines).
+export function countPending(text: string): number {
+  return text.split('\n').filter(line => line.startsWith('- [ ]')).length
+}
+
+async function pendingCorrections($: EngineInterface, path: string) {
+  try {
+    const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? ''
+    if (path.startsWith('~') && home === '') return 0
+
+    return countPending(await $.fs.read(path.startsWith('~') ? home + path.slice(1) : path))
+  } catch {
+    return 0
+  }
+}
+
 type Config = {
   compactAt: number
   handoffAt: number
   breaks: BreakTime[]
   leadMinutes: number
   longSessionMinutes: number
+  reflectCorrections: number
+  reflectTurns: number
+  reflected: boolean
+  correctionsPath: string
   offsetMinutes: number
   startedAt: number
   lastSuggested: string | null
@@ -160,6 +190,9 @@ type Config = {
 async function refresh($: EngineInterface, cfg: Config) {
   const at = await $.clock.now()
   const { context } = await $.session.usage()
+  const reflect = await read($, reflectReason)
+  // Only read the log while the nudge could still show.
+  const pending = reflect === null && !cfg.reflected ? await pendingCorrections($, cfg.correctionsPath) : 0
   const found = computeHints({
     percent: context.percent ?? null,
     localMinute: Math.floor((((at / 60_000 + cfg.offsetMinutes) % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES),
@@ -167,7 +200,11 @@ async function refresh($: EngineInterface, cfg: Config) {
     leadMinutes: cfg.leadMinutes,
     sessionMinutes: cfg.startedAt === 0 ? 0 : (at - cfg.startedAt) / 60_000,
     turns: await $.session.turns(),
-    reflect: await read($, reflectReason),
+    reflect,
+    reflected: cfg.reflected,
+    pendingCorrections: pending,
+    reflectCorrections: cfg.reflectCorrections,
+    reflectTurns: cfg.reflectTurns,
     compactAt: cfg.compactAt,
     handoffAt: cfg.handoffAt,
     longSessionMinutes: cfg.longSessionMinutes,
@@ -225,7 +262,8 @@ async function setReflect($: EngineInterface, reason: string) {
   await update($, hints, list => [{ kind: 'reflect' as const, reason }, ...list.filter(hint => hint.kind !== 'reflect')])
 }
 
-async function reflect($: EngineInterface) {
+async function reflect($: EngineInterface, cfg: Config) {
+  cfg.reflected = true
   await update($, reflectReason, () => null)
   await update($, hints, list => list.filter(hint => hint.kind !== 'reflect'))
   await $.prompt.submit({ text: REFLECT_PROMPT })
@@ -252,6 +290,11 @@ export const register: Register = (on, options) => {
     breaks: parseBreaks(options.breakTimes ?? '17:30 end of work, 22:30 bedtime'),
     leadMinutes: numberOr(options.breakLeadMinutes, 30),
     longSessionMinutes: numberOr(options.longSessionHours, 3) * 60,
+    reflectCorrections: numberOr(options.reflectAtCorrections, 3),
+    reflectTurns: numberOr(options.reflectAfterTurns, 20),
+    reflected: false,
+    correctionsPath:
+      typeof options.correctionsPath === 'string' && options.correctionsPath.length > 0 ? options.correctionsPath : '~/.claude/corrections.md',
     offsetMinutes: 0,
     startedAt: 0,
     lastSuggested: null,
@@ -278,6 +321,7 @@ export const register: Register = (on, options) => {
     if (e.reason === 'clear') {
       cfg.startedAt = await $.clock.now()
       cfg.lastSuggested = null
+      cfg.reflected = false
       failedChecks.clear()
       await update($, reflectReason, () => null)
       $.clock.after(500, () => void fillPendingHandoff($))
@@ -329,7 +373,7 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'handoff' }, async $ => ({ text: await handoff($, cfg) }))
-  on('command.run', { command: 'reflect' }, async $ => ({ text: await reflect($) }))
+  on('command.run', { command: 'reflect' }, async $ => ({ text: await reflect($, cfg) }))
   on('command.run', { command: 'hud' }, async $ => {
     await update($, isHidden, hidden => !hidden)
 
@@ -360,7 +404,7 @@ export const register: Register = (on, options) => {
               onPress={async () => {
                 if (hint.kind === 'compact') await compact($, cfg)
                 else if (hint.kind === 'handoff') $.ui.toast(await handoff($, cfg))
-                else await reflect($)
+                else await reflect($, cfg)
               }}
             />
           </Box>
