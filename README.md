@@ -44,11 +44,11 @@ That only works if the repo is public. For a private repo, paste the body of `cl
 ## The status line
 
 ```text
-Opus 5.5 high │ ctx 34% 340k/1M │ cache 42m │ 5h 31% ↻2h11m 7d 18% │ $1.23
-~/code/pipeline ⎇ main* │ # Fix consumer lag
+Opus 5.5 high │ ctx 150k/1000k (85% left) │ cache 42m left │ 5h 31% ↻2h11m 7d 18% │ $1.23
+~/wo/sd/ru/2026-09-29-batch ⎇ main* │ # Fix consumer lag
 ```
 
-Model and effort, context (green, yellow from 35%, red from 50%), the real prompt-cache expiry, the 5-hour quota with its reset time, the 7-day quota, cost, folder, git branch (`*` when dirty), worktree and session name. Green is fine, yellow means look soon, red means act. It needs `python3`. Change thresholds with env vars such as `CLAUDE_SL_CTX_RED=60`. If you already have a status line, `install.sh` keeps it; run `KIT_FORCE_STATUSLINE=1 ~/claude-kit/install.sh` to switch.
+Model and effort, context as used/total tokens (green, yellow from 35%, red from 50%), the real prompt-cache expiry, the 5-hour quota with its reset time, the 7-day quota, cost, folder (paths over 25 characters shrink each parent to 2 letters; change with `CLAUDE_SL_PATH_MAX`), git branch (`*` when dirty), worktree and session name. Green is fine, yellow means look soon, red means act. It needs `python3`. Change thresholds with env vars such as `CLAUDE_SL_CTX_RED=60`. If you already have a status line, `install.sh` keeps it; run `KIT_FORCE_STATUSLINE=1 ~/claude-kit/install.sh` to switch.
 
 ## The mods
 

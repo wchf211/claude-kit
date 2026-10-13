@@ -41,8 +41,6 @@ def level(value, yellow, red):
 
 
 def tokens(n):
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
     return f"{round(n / 1000)}k"
 
 
@@ -73,9 +71,12 @@ def context_part(data):
     if used is None:
         return None
     size = ctx.get("context_window_size")
-    total = ctx.get("total_input_tokens")
-    detail = f" {DIM}{tokens(total)}/{tokens(size)}{RESET}" if total and size else ""
-    return f"ctx {paint(level(used, CTX_YELLOW, CTX_RED), f'{used}%')}{detail}"
+    total = ctx.get("total_input_tokens") or 0
+    left = ctx.get("remaining_percentage", 100 - used)
+    color = level(used, CTX_YELLOW, CTX_RED)
+    if size:
+        return f"ctx {paint(color, f'{tokens(total)}/{tokens(size)}')} {paint(color, f'({left}% left)')}"
+    return f"ctx {paint(color, f'{left}% left')}"
 
 
 def cache_part(data, now):
@@ -88,7 +89,7 @@ def cache_part(data, now):
     left = expires - now
     ttl = 3600 if cache.get("ttl") == "1h" else 300
     color = GREEN if left > ttl * 0.25 else YELLOW if left > 60 else RED
-    return f"cache {paint(color, duration(left))}"
+    return f"cache {paint(color, duration(left) + ' left')}"
 
 
 def quota_part(data, now):
@@ -131,12 +132,24 @@ def git_part(cwd):
     return paint(GREEN, f"⎇ {branch}") + (paint(YELLOW, "*") if dirty else "")
 
 
+PATH_MAX = int(os.environ.get("CLAUDE_SL_PATH_MAX", "25"))
+
+
+def short_path(path, limit=PATH_MAX):
+    """~/workspace/sd-practice/runs/2026-09-29-batch -> ~/wo/sd/ru/2026-09-29-batch when too long."""
+    if len(path) <= limit:
+        return path
+    parts = path.split("/")
+    head = [p if p in ("", "~") else p[:2] for p in parts[:-1]]
+    return "/".join(head + parts[-1:])
+
+
 def folder_part(data):
     workspace = data.get("workspace") or {}
     cwd = workspace.get("current_dir") or data.get("cwd") or os.getcwd()
     home = os.path.expanduser("~")
-    shown = "~" + cwd[len(home):] if cwd.startswith(home) else cwd
-    return cwd, paint(BLUE, shown)
+    shown = "~" + cwd[len(home):] if cwd == home or cwd.startswith(home + "/") else cwd
+    return cwd, paint(BLUE, short_path(shown))
 
 
 def main():
