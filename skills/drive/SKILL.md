@@ -31,7 +31,16 @@ If nothing needs him, don't wait. Start right after the brief.
 Use the strongest check that fits, in this order:
 
 1. **Tests and real runs**: run every "Done when" check. Copy the real output. Add a test when a quick one is possible.
-2. **Second-model review**: for work tests can't check (docs, designs, research, prompts), start a fresh subagent on a different model: Sonnet when you run on Opus, Opus when you run on Sonnet or Haiku. Give it only the goal, the "Done when" list and the result, not your reasoning. Ask it for concrete problems. Fix the real ones.
+2. **Reviewer agents**: run the kit's dedicated reviewers that match the change, in parallel. Give each only the goal, the "Done when" list and where the result is, not your reasoning. Fix the real findings.
+
+    | Change touches | Reviewer |
+    | -------------- | -------- |
+    | Any code | `review-correctness` |
+    | Input handling, auth, shell/SQL, secrets, dependencies | `review-security` |
+    | Kafka, Pub/Sub, Bigtable, queues, consumers, pipelines, schemas | `review-data-systems` |
+    | Docs, plans, research, prompts, rules, skills | `review-doc` |
+
+    The reviewers run on Sonnet. If you run on Sonnet or Haiku yourself, start them with the Opus model instead, so the reviewer is a different model. If the reviewers are not installed, use a fresh general subagent with the same instructions.
 3. **Self-review**: re-read your diff as a strict reviewer: bugs, edge cases, leftover debug code, things not asked for.
 
 If a check fails: find the root cause, fix, run again. Up to 3 different attempts. Never weaken or skip a test to get green.

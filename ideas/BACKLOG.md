@@ -8,6 +8,8 @@ Notes from looking into an idea go in ideas/notes/<slug>.md.
 - [ ] Context breakdown pane: a side pane showing what fills the context (tools, MCP servers, memory files, messages) · _2026-10-12, from claude-kit_ → [notes](notes/context-breakdown-pane.md)
 - [ ] Calendar-aware Handoff: read today's calendar (Google Calendar) so session-hud suggests Handoff before meetings and pickups, not only fixed break times · _2026-10-12, from claude-kit_ → [notes](notes/calendar-aware-handoff.md)
 
+- [ ] Cross-vendor reviewers: run Codex (`codex exec`) and Gemini (`gemini -p`) as extra reviewers next to the kit's review agents, and log which one finds real bugs · _2026-10-13, from claude-kit_
+
 ## Exploring
 
 ## Done / Dropped

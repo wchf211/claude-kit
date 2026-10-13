@@ -7,7 +7,7 @@ CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 MARKETPLACE="daniel-kit"
 
 echo "Kit: $KIT"
-mkdir -p "$CLAUDE_HOME/skills"
+mkdir -p "$CLAUDE_HOME/skills" "$CLAUDE_HOME/agents"
 
 # 1. Skills: link each kit skill into ~/.claude/skills so every project sees it.
 for dir in "$KIT"/skills/*/; do
@@ -15,6 +15,13 @@ for dir in "$KIT"/skills/*/; do
   name="$(basename "$dir")"
   ln -sfn "${dir%/}" "$CLAUDE_HOME/skills/$name"
   echo "skill   $name"
+done
+
+# 1b. Agents: link each kit subagent (agents/*.md) into ~/.claude/agents.
+for file in "$KIT"/agents/*.md; do
+  [ -f "$file" ] || continue
+  ln -sfn "$file" "$CLAUDE_HOME/agents/$(basename "$file")"
+  echo "agent   $(basename "$file" .md)"
 done
 
 # 2. Global rules: import rules/global.md from ~/.claude/CLAUDE.md (added once).

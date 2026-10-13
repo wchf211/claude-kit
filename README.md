@@ -8,6 +8,7 @@ One repo for everything that makes Claude Code better for me: mods, skills, rule
 | ------ | ---------------- | --------------------------- |
 | `plugins/` | Mods (plugins of function hooks) | The repo is a local marketplace (`daniel-kit`), installed by `install.sh` |
 | `skills/` | Personal skills, one folder each | Linked into `~/.claude/skills/` |
+| `agents/` | Dedicated reviewer subagents (correctness, security, data systems, docs) | Linked into `~/.claude/agents/` |
 | `rules/global.md` | My global rules and preferences | Imported from `~/.claude/CLAUDE.md` |
 | `knowledge/` | Notes worth keeping (KEs) | Claude reads and writes them on request (`kit-capture` skill) |
 | `ideas/BACKLOG.md` | Parked ideas; `ideas/notes/` holds research on them | `/idea`, `/ideas`, and the `park_idea` tool |
