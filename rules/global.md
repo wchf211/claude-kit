@@ -31,3 +31,5 @@ These load into every Claude Code session through ~/.claude/CLAUDE.md. Keep them
 <!-- /reflect appends dated rules here -->
 - 2026-10-13: When several models produce drafts of the same thing, the goal is to harvest the best parts of each and merge them, not to rank them. Every draft gets reviewed, including Claude's own; use a fresh subagent for that so it is not biased toward my draft.
 - 2026-10-13: Say something is saved, sent, or done only after the tool call that did it has returned success in the same turn.
+- 2026-10-16: Before repeating a slow UI step more than 3 times, look for a bulk route first (clipboard paste, API, local files). In the browser, send sequences of clicks and screenshots in one batch call.
+- 2026-10-16: When a tool or page fails, reload or retry once before asking me to change anything. State a cause only as "probably" unless it is verified.
